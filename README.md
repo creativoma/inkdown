@@ -4,7 +4,7 @@ Markdown to PDF, live. Write Markdown on the left, get a clean typeset PDF on th
 right, and download it. Everything runs in the browser — no uploads, no account,
 no server.
 
-[Live app](https://inkdown.marianoalvarez.dev) ·
+[Live app](https://inkdown-nine.vercel.app) ·
 [Sponsor](https://github.com/sponsors/creativoma)
 
 ## Features

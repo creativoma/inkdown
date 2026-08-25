@@ -6,9 +6,7 @@ export const siteConfig = {
     version: packageJson.version,
     description:
         'Write Markdown and get a clean, typeset PDF instantly. Live preview, custom fonts, margins and logo. Free, open source, and fully local — your documents never leave the browser.',
-    url:
-        process.env.NEXT_PUBLIC_SITE_URL ??
-        'https://inkdown.marianoalvarez.dev',
+    url: process.env.NEXT_PUBLIC_SITE_URL ?? 'https://inkdown-nine.vercel.app',
     repo: 'https://github.com/creativoma/inkdown',
     sponsor: 'https://github.com/sponsors/creativoma',
     license: {
