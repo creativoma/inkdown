@@ -7,6 +7,8 @@ no server.
 [Live app](https://inkdown-nine.vercel.app) ·
 [Sponsor](https://github.com/sponsors/creativoma)
 
+![Inkdown: settings, the Markdown editor and the live PDF preview side by side](public/screenshot.webp)
+
 ## Features
 
 - **Live preview that never flashes.** The document renders into a hidden iframe
