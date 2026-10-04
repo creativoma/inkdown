@@ -5,8 +5,6 @@ export const styles = StyleSheet.create({
         color: '#1a1a1a',
     },
     logo: {
-        maxWidth: 120,
-        maxHeight: 60,
         objectFit: 'contain',
         marginBottom: 24,
     },
@@ -46,6 +44,15 @@ export const styles = StyleSheet.create({
         flex: 1,
         lineHeight: 1.6,
         color: '#2a2a2a',
+    },
+    link: {
+        textDecoration: 'underline',
+    },
+    image: {
+        maxWidth: '100%',
+        objectFit: 'contain',
+        alignSelf: 'flex-start',
+        marginBottom: 14,
     },
     hr: {
         borderBottomWidth: 1,

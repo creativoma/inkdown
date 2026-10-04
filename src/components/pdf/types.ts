@@ -6,7 +6,10 @@ export interface DocumentSettings {
     bodyFont: FontFamily
     titleSize: number
     bodySize: number
+    linkColor: string
     logo: string | null
+    /** Largest logo width in points; height is capped at half of it. */
+    logoSize: number
     note: string
     marginTop: number
     marginBottom: number
@@ -18,4 +21,6 @@ export interface MyDocumentArgs {
     settings: DocumentSettings
     /** Headings pre-wrapped into balanced lines, keyed by `level:text`. */
     balancedHeadings?: Record<string, string>
+    /** Pasted images (PNG/JPEG data URLs), referenced as `image:<id>`. */
+    images?: Record<string, string>
 }

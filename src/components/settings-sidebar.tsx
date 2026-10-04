@@ -3,6 +3,7 @@
 import React, { useRef } from 'react'
 import { DocumentSettings, FontFamily } from '@/components/pdf/types'
 import { FontOption } from '@/lib/fonts'
+import { toPdfImage } from '@/lib/images'
 import { cn } from '@/lib/utils'
 
 const MARGIN_PRESETS: {
@@ -165,61 +166,33 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
     const update = (patch: Partial<DocumentSettings>) =>
         onChange({ ...settings, ...patch })
 
-    const rasterizeSvgText = (svgText: string): Promise<string> => {
-        const normalized = /xmlns\s*=/.test(svgText)
-            ? svgText
-            : svgText.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"')
-
-        return new Promise((resolve, reject) => {
-            const blob = new Blob([normalized], { type: 'image/svg+xml' })
-            const url = URL.createObjectURL(blob)
-            const scale = 3
-
-            const img = new window.Image()
-            img.onload = () => {
-                const canvas = document.createElement('canvas')
-                canvas.width = (img.naturalWidth || 300) * scale
-                canvas.height = (img.naturalHeight || 150) * scale
-                const ctx = canvas.getContext('2d')
-                if (!ctx) {
-                    URL.revokeObjectURL(url)
-                    reject(new Error('Canvas not supported'))
-                    return
-                }
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-                URL.revokeObjectURL(url)
-                resolve(canvas.toDataURL('image/png'))
-            }
-            img.onerror = () => {
-                URL.revokeObjectURL(url)
-                reject(new Error('Could not load SVG'))
-            }
-            img.src = url
-        })
-    }
-
-    const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
+        e.target.value = ''
         if (!file) return
 
         const isSvg =
             file.type === 'image/svg+xml' ||
             file.name.toLowerCase().endsWith('.svg')
 
-        const reader = new FileReader()
-        if (isSvg) {
-            reader.onload = async () => {
-                try {
-                    const logo = await rasterizeSvgText(reader.result as string)
-                    update({ logo })
-                } catch {
-                    // Ignore malformed SVG uploads and keep the previous logo.
-                }
+        try {
+            let source: Blob | string = file
+            if (isSvg) {
+                // Browsers refuse to decode an SVG without its namespace.
+                const svgText = await file.text()
+                const normalized = /xmlns\s*=/.test(svgText)
+                    ? svgText
+                    : svgText.replace(
+                          '<svg',
+                          '<svg xmlns="http://www.w3.org/2000/svg"'
+                      )
+                source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(normalized)}`
             }
-            reader.readAsText(file)
-        } else {
-            reader.onload = () => update({ logo: reader.result as string })
-            reader.readAsDataURL(file)
+            // react-pdf only embeds PNG and JPEG, so WebP, GIF, SVG… are
+            // re-encoded as PNG.
+            update({ logo: await toPdfImage(source, { maxSize: 1200 }) })
+        } catch {
+            // Ignore images the browser cannot decode and keep the previous logo.
         }
     }
 
@@ -272,6 +245,17 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                         >
                             Upload image
                         </button>
+                    )}
+                    {settings.logo && (
+                        <NumberField
+                            id="logoSize"
+                            label="Logo size"
+                            value={settings.logoSize}
+                            min={30}
+                            max={400}
+                            step={10}
+                            onCommit={(logoSize) => update({ logoSize })}
+                        />
                     )}
                     <input
                         ref={fileInputRef}
@@ -329,6 +313,15 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                     step={0.5}
                     onCommit={(bodySize) => update({ bodySize })}
                 />
+                <Row htmlFor="linkColor" label="Link color">
+                    <input
+                        id="linkColor"
+                        type="color"
+                        value={settings.linkColor}
+                        onChange={(e) => update({ linkColor: e.target.value })}
+                        className="h-7 w-16 cursor-pointer rounded-md border border-input bg-transparent p-0.5"
+                    />
+                </Row>
                 <button
                     type="button"
                     onClick={onLoadLocalFonts}

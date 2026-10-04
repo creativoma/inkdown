@@ -17,15 +17,24 @@ no server.
 - **Balanced titles.** `text-wrap: balance` does not exist in the PDF renderer,
   so Inkdown measures every heading with the real font metrics and pre-wraps it
   into even lines. Words are never hyphenated mid-break.
-- **Markdown**: headings, bold, italic, ordered and unordered lists,
-  blockquotes, tables and horizontal rules.
-- **Typography**: separate title and body family, sizes, and page margins with
-  Compact / Default / Wide presets.
-- **Logo** (PNG, JPG or SVG — SVG is rasterized at 3× so it stays sharp).
+- **Markdown**: headings, bold, italic, links, images, ordered and unordered
+  lists, blockquotes, tables and horizontal rules. Links (`[text](url)` and bare
+  URLs) stay clickable in the PDF.
+- **Paste images**: `⌘/Ctrl + V` with an image on the clipboard inserts it on its
+  own line as `![image](image:<id>)`. The image is kept with the draft rather
+  than inlined as base64, so the Markdown stays readable.
+- **Page breaks that hold together**: a list item or table row is never split
+  across two pages.
+- **Typography**: separate title and body family, sizes, link color, and page
+  margins with Compact / Default / Wide presets.
+- **Logo** in any format the browser can open (PNG, JPG, WebP, GIF, SVG…) with
+  adjustable size. The PDF renderer only embeds PNG and JPEG, so other formats
+  are converted to PNG, and SVG is rasterized at 3× so it stays sharp.
 - **Page note**: a small line repeated at the bottom of every page, for
   confidentiality notices, validity dates or contact details.
-- **Nothing is lost**: draft and settings are saved in your browser and restored
-  on the next visit.
+- **Nothing is lost**: draft, settings and pasted images are saved in your
+  browser and restored on the next visit. Browser storage is capped at a few MB,
+  so many large images can stop the draft from saving.
 - The PDF is named after the document's first heading, and `⌘/Ctrl + S`
   downloads it.
 
@@ -81,6 +90,7 @@ src/
     markdown.ts        the small Markdown parser
     balance.ts         font-metric line balancing for headings
     fonts.ts           bundled + local font registration
+    images.ts          image conversion to PDF-ready PNG
     storage.ts         localStorage draft
 ```
 
