@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { ViewVerticalIcon } from '@radix-ui/react-icons'
 import MyDocument from '@/components/pdf/my-document'
 import { PdfPreview } from '@/components/pdf-preview'
@@ -22,6 +22,12 @@ import { balanceHeadings, BalancedHeadings } from '@/lib/balance'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
 import { fileNameFromMarkdown } from '@/lib/filename'
 import { clearDraft, loadDraft, saveDraft } from '@/lib/storage'
+import {
+    IMAGE_REF_PREFIX,
+    createImageId,
+    isPdfReadyImage,
+    toPdfImage,
+} from '@/lib/images'
 import { cn } from '@/lib/utils'
 
 setupPdfFonts()
@@ -49,7 +55,9 @@ const DEFAULT_SETTINGS: DocumentSettings = {
     bodyFont: 'Helvetica',
     titleSize: 20,
     bodySize: 10.5,
+    linkColor: '#1d4ed8',
     logo: null,
+    logoSize: 120,
     note: '',
     marginTop: 64,
     marginBottom: 64,
@@ -68,6 +76,17 @@ const PANES: { value: Pane; label: string }[] = [
  * A draft can name a font that is no longer registered (a local font after a
  * reload). Fall back so the preview always renders.
  */
+/** Only images still referenced in the markdown are worth keeping. */
+const referencedImages = (
+    markdown: string,
+    images: Record<string, string>
+): Record<string, string> =>
+    Object.fromEntries(
+        Object.entries(images).filter(([id]) =>
+            markdown.includes(`(${IMAGE_REF_PREFIX}${id})`)
+        )
+    )
+
 const withAvailableFonts = (settings: DocumentSettings): DocumentSettings => {
     const known = new Set(INSTALLED_FONTS.map((font) => font.value))
     return {
@@ -90,6 +109,10 @@ export const Editor = () => {
     const [settings, setSettings] = useState<DocumentSettings>(() =>
         withAvailableFonts({ ...DEFAULT_SETTINGS, ...loadDraft()?.settings })
     )
+    const [images, setImages] = useState<Record<string, string>>(
+        () => loadDraft()?.images ?? {}
+    )
+    const textareaRef = useRef<HTMLTextAreaElement>(null)
     const [localFonts, setLocalFonts] = useState<FontOption[]>([])
     const [localFontsStatus, setLocalFontsStatus] = useState<LocalFontsStatus>(
         () => (supportsLocalFonts() ? 'idle' : 'unsupported')
@@ -99,9 +122,40 @@ export const Editor = () => {
     const [resetOpen, setResetOpen] = useState(false)
 
     useEffect(() => {
-        const timeout = setTimeout(() => saveDraft({ markdown, settings }), 500)
+        const timeout = setTimeout(
+            () =>
+                saveDraft({
+                    markdown,
+                    settings,
+                    images: referencedImages(markdown, images),
+                }),
+            500
+        )
         return () => clearTimeout(timeout)
-    }, [markdown, settings])
+    }, [markdown, settings, images])
+
+    // Drafts saved before logos were converted can hold a WebP/GIF that
+    // react-pdf cannot decode.
+    useEffect(() => {
+        const logo = settings.logo
+        if (!logo || isPdfReadyImage(logo)) return
+
+        let cancelled = false
+        toPdfImage(logo, { maxSize: 1200 }).then(
+            (converted) => {
+                if (cancelled) return
+                setSettings((current) =>
+                    current.logo === logo
+                        ? { ...current, logo: converted }
+                        : current
+                )
+            },
+            () => {}
+        )
+        return () => {
+            cancelled = true
+        }
+    }, [settings.logo])
 
     // The PDF only re-renders once typing pauses; the textarea stays responsive.
     const renderedMarkdown = useDebouncedValue(markdown, 600)
@@ -115,6 +169,7 @@ export const Editor = () => {
         markdown: string
         settings: DocumentSettings
         balancedHeadings: BalancedHeadings
+        images: Record<string, string>
     } | null>(null)
 
     useEffect(() => {
@@ -126,6 +181,7 @@ export const Editor = () => {
                 markdown: renderedMarkdown,
                 settings: renderedSettings,
                 balancedHeadings,
+                images,
             })
         }
 
@@ -136,7 +192,7 @@ export const Editor = () => {
         return () => {
             cancelled = true
         }
-    }, [renderedMarkdown, renderedSettings])
+    }, [renderedMarkdown, renderedSettings, images])
 
     const pdfDocument = useMemo(
         () => (prepared ? <MyDocument args={prepared} /> : null),
@@ -168,8 +224,47 @@ export const Editor = () => {
         }
     }
 
+    const handlePaste = async (
+        e: React.ClipboardEvent<HTMLTextAreaElement>
+    ) => {
+        const file = Array.from(e.clipboardData.items)
+            .find(
+                (item) => item.kind === 'file' && item.type.startsWith('image/')
+            )
+            ?.getAsFile()
+        if (!file) return
+
+        e.preventDefault()
+        const textarea = e.currentTarget
+        const { selectionStart, selectionEnd } = textarea
+
+        let dataUrl: string
+        try {
+            dataUrl = await toPdfImage(file, { maxSize: 1600 })
+        } catch {
+            return
+        }
+
+        const id = createImageId()
+        setImages((current) => ({ ...current, [id]: dataUrl }))
+
+        // The image goes on its own line so it parses as an image block.
+        const before = markdown.slice(0, selectionStart)
+        const after = markdown.slice(selectionEnd)
+        const prefix = before === '' || before.endsWith('\n') ? '' : '\n'
+        const suffix = after.startsWith('\n') ? '' : '\n'
+        const snippet = `${prefix}![image](${IMAGE_REF_PREFIX}${id})${suffix}`
+        setMarkdown(before + snippet + after)
+
+        const caret = before.length + snippet.length
+        requestAnimationFrame(() => {
+            textareaRef.current?.setSelectionRange(caret, caret)
+        })
+    }
+
     const handleReset = () => {
         clearDraft()
+        setImages({})
         setMarkdown(DEFAULT_MARKDOWN)
         setSettings(DEFAULT_SETTINGS)
         setResetOpen(false)
@@ -245,9 +340,11 @@ export const Editor = () => {
                         </button>
                     </div>
                     <textarea
+                        ref={textareaRef}
                         className="flex-1 resize-none bg-transparent px-6 font-mono text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground md:px-10"
                         value={markdown}
                         onChange={(e) => setMarkdown(e.target.value)}
+                        onPaste={handlePaste}
                         placeholder="# Title..."
                         spellCheck={false}
                         aria-label="Markdown source"

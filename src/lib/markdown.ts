@@ -2,6 +2,7 @@ export interface InlineSpan {
     text: string
     bold?: boolean
     italic?: boolean
+    href?: string
 }
 
 export type MarkdownBlock =
@@ -10,11 +11,16 @@ export type MarkdownBlock =
     | { type: 'list'; ordered: boolean; items: InlineSpan[][] }
     | { type: 'blockquote'; spans: InlineSpan[] }
     | { type: 'table'; header: InlineSpan[][]; rows: InlineSpan[][][] }
+    | { type: 'image'; src: string; alt: string }
     | { type: 'hr' }
+
+const IMAGE_LINE = /^!\[([^\]]*)\]\(\s*(\S+?)\s*\)$/
 
 function parseInline(text: string): InlineSpan[] {
     const spans: InlineSpan[] = []
-    const pattern = /(\*\*.+?\*\*|\*.+?\*)/g
+    // Links ([text](url) and bare URLs), then bold and italic.
+    const pattern =
+        /(\[[^\]]+\]\(\s*[^)\s]+\s*\)|https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"]|\*\*.+?\*\*|\*.+?\*)/g
     let lastIndex = 0
     let match: RegExpExecArray | null
 
@@ -24,7 +30,12 @@ function parseInline(text: string): InlineSpan[] {
         }
 
         const token = match[0]
-        if (token.startsWith('**')) {
+        const link = /^\[([^\]]+)\]\(\s*([^)\s]+)\s*\)$/.exec(token)
+        if (link) {
+            spans.push(...parseLinkLabel(link[1], link[2]))
+        } else if (/^https?:\/\//.test(token)) {
+            spans.push({ text: token, href: token })
+        } else if (token.startsWith('**')) {
             spans.push({ text: token.slice(2, -2), bold: true })
         } else {
             spans.push({ text: token.slice(1, -1), italic: true })
@@ -39,6 +50,10 @@ function parseInline(text: string): InlineSpan[] {
 
     return spans.length > 0 ? spans : [{ text: '' }]
 }
+
+/** A link label can carry its own bold/italic; every piece keeps the href. */
+const parseLinkLabel = (label: string, href: string): InlineSpan[] =>
+    parseInline(label).map((span) => ({ ...span, href }))
 
 function parseTableRow(line: string): string[] {
     const trimmed = line.trim().replace(/^\||\|$/g, '')
@@ -63,6 +78,17 @@ export function parseMarkdown(markdown: string): MarkdownBlock[] {
 
         if (/^---+$/.test(line.trim())) {
             blocks.push({ type: 'hr' })
+            i++
+            continue
+        }
+
+        const imageMatch = IMAGE_LINE.exec(line.trim())
+        if (imageMatch) {
+            blocks.push({
+                type: 'image',
+                alt: imageMatch[1],
+                src: imageMatch[2],
+            })
             i++
             continue
         }
@@ -136,7 +162,8 @@ export function parseMarkdown(markdown: string): MarkdownBlock[] {
             !/^\d+\.\s+/.test(lines[i]) &&
             !/^>\s?/.test(lines[i]) &&
             !/^\|.*\|$/.test(lines[i].trim()) &&
-            !/^---+$/.test(lines[i].trim())
+            !/^---+$/.test(lines[i].trim()) &&
+            !IMAGE_LINE.test(lines[i].trim())
         ) {
             paragraphLines.push(lines[i])
             i++

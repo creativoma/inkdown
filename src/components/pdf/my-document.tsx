@@ -1,21 +1,34 @@
 'use client'
 
 import React from 'react'
-import { Page, Text, View, Image, Document } from '@react-pdf/renderer'
+import { Page, Text, View, Image, Link, Document } from '@react-pdf/renderer'
 import type { StyleProp } from '@react-pdf/types'
 import { styles } from '@/components/pdf/styles'
 import { MyDocumentArgs } from '@/components/pdf/types'
 import { parseMarkdown, InlineSpan } from '@/lib/markdown'
 import { headingKey } from '@/lib/balance'
+import { IMAGE_REF_PREFIX } from '@/lib/images'
 
 const BOLD = { fontWeight: 700 } as const
 const ITALIC = { fontStyle: 'italic' } as const
 
-const renderSpans = (spans: InlineSpan[]) =>
+const renderSpans = (spans: InlineSpan[], linkColor: string) =>
     spans.map((span, index) => {
         const spanStyles: StyleProp = []
         if (span.bold) spanStyles.push(BOLD)
         if (span.italic) spanStyles.push(ITALIC)
+
+        if (span.href) {
+            return (
+                <Link
+                    key={index}
+                    src={span.href}
+                    style={[...spanStyles, styles.link, { color: linkColor }]}
+                >
+                    {span.text}
+                </Link>
+            )
+        }
 
         return (
             <Text key={index} style={spanStyles}>
@@ -25,7 +38,7 @@ const renderSpans = (spans: InlineSpan[]) =>
     })
 
 const MyDocument: React.FC<{ args: MyDocumentArgs }> = ({ args }) => {
-    const { markdown, settings, balancedHeadings } = args
+    const { markdown, settings, balancedHeadings, images } = args
     const blocks = parseMarkdown(markdown)
     const firstHeading = blocks.find((block) => block.type === 'heading')
     const title =
@@ -49,6 +62,12 @@ const MyDocument: React.FC<{ args: MyDocumentArgs }> = ({ args }) => {
     }
 
     const bodyBase: StyleProp = [{ fontSize: bodySize }]
+
+    // A4 height minus the margins: taller images would never fit on a page.
+    const maxImageHeight = Math.max(
+        100,
+        841.89 - settings.marginTop - settings.marginBottom - 14
+    )
 
     const note = settings.note.trim()
     const noteSize = Math.max(6.5, bodySize * 0.68)
@@ -87,7 +106,16 @@ const MyDocument: React.FC<{ args: MyDocumentArgs }> = ({ args }) => {
                 )}
                 {settings.logo && (
                     // eslint-disable-next-line jsx-a11y/alt-text -- react-pdf's Image has no alt prop
-                    <Image src={settings.logo} style={styles.logo} />
+                    <Image
+                        src={settings.logo}
+                        style={[
+                            styles.logo,
+                            {
+                                maxWidth: settings.logoSize,
+                                maxHeight: settings.logoSize / 2,
+                            },
+                        ]}
+                    />
                 )}
                 {blocks.map((block, index) => {
                     switch (block.type) {
@@ -109,7 +137,11 @@ const MyDocument: React.FC<{ args: MyDocumentArgs }> = ({ args }) => {
                                     key={index}
                                     style={headingBase(block.level)}
                                 >
-                                    {balanced ?? renderSpans(block.spans)}
+                                    {balanced ??
+                                        renderSpans(
+                                            block.spans,
+                                            settings.linkColor
+                                        )}
                                 </Text>
                             )
                         }
@@ -119,16 +151,22 @@ const MyDocument: React.FC<{ args: MyDocumentArgs }> = ({ args }) => {
                                     key={index}
                                     style={[...bodyBase, styles.paragraph]}
                                 >
-                                    {renderSpans(block.spans)}
+                                    {renderSpans(
+                                        block.spans,
+                                        settings.linkColor
+                                    )}
                                 </Text>
                             )
                         case 'list':
                             return (
                                 <View key={index} style={styles.list}>
                                     {block.items.map((item, itemIndex) => (
+                                        // Keep the bullet and its text on the
+                                        // same page.
                                         <View
                                             key={itemIndex}
                                             style={styles.listItem}
+                                            wrap={false}
                                         >
                                             <Text
                                                 style={[
@@ -146,7 +184,10 @@ const MyDocument: React.FC<{ args: MyDocumentArgs }> = ({ args }) => {
                                                     styles.listItemText,
                                                 ]}
                                             >
-                                                {renderSpans(item)}
+                                                {renderSpans(
+                                                    item,
+                                                    settings.linkColor
+                                                )}
                                             </Text>
                                         </View>
                                     ))}
@@ -164,14 +205,17 @@ const MyDocument: React.FC<{ args: MyDocumentArgs }> = ({ args }) => {
                                             styles.blockquoteText,
                                         ]}
                                     >
-                                        {renderSpans(block.spans)}
+                                        {renderSpans(
+                                            block.spans,
+                                            settings.linkColor
+                                        )}
                                     </Text>
                                 </View>
                             )
                         case 'table':
                             return (
                                 <View key={index} style={styles.table}>
-                                    <View style={styles.tableRow}>
+                                    <View style={styles.tableRow} wrap={false}>
                                         {block.header.map((cell, cellIndex) => (
                                             <Text
                                                 key={cellIndex}
@@ -184,7 +228,10 @@ const MyDocument: React.FC<{ args: MyDocumentArgs }> = ({ args }) => {
                                                     styles.tableHeaderCell,
                                                 ]}
                                             >
-                                                {renderSpans(cell)}
+                                                {renderSpans(
+                                                    cell,
+                                                    settings.linkColor
+                                                )}
                                             </Text>
                                         ))}
                                     </View>
@@ -192,6 +239,7 @@ const MyDocument: React.FC<{ args: MyDocumentArgs }> = ({ args }) => {
                                         <View
                                             key={rowIndex}
                                             style={styles.tableRow}
+                                            wrap={false}
                                         >
                                             {row.map((cell, cellIndex) => (
                                                 <Text
@@ -204,13 +252,36 @@ const MyDocument: React.FC<{ args: MyDocumentArgs }> = ({ args }) => {
                                                         styles.tableCell,
                                                     ]}
                                                 >
-                                                    {renderSpans(cell)}
+                                                    {renderSpans(
+                                                        cell,
+                                                        settings.linkColor
+                                                    )}
                                                 </Text>
                                             ))}
                                         </View>
                                     ))}
                                 </View>
                             )
+                        case 'image': {
+                            const src = block.src.startsWith(IMAGE_REF_PREFIX)
+                                ? images?.[
+                                      block.src.slice(IMAGE_REF_PREFIX.length)
+                                  ]
+                                : block.src
+                            if (!src) return null
+
+                            return (
+                                // eslint-disable-next-line jsx-a11y/alt-text -- react-pdf's Image has no alt prop
+                                <Image
+                                    key={index}
+                                    src={src}
+                                    style={[
+                                        styles.image,
+                                        { maxHeight: maxImageHeight },
+                                    ]}
+                                />
+                            )
+                        }
                         case 'hr':
                             return <View key={index} style={styles.hr} />
                         default:
