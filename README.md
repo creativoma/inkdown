@@ -35,8 +35,12 @@ no server.
 - **Nothing is lost**: draft, settings and pasted images are saved in your
   browser and restored on the next visit. Browser storage is capped at a few MB,
   so many large images can stop the draft from saving.
-- The PDF is named after the document's first heading, and `⌘/Ctrl + S`
-  downloads it.
+- **Word export**: the Download menu saves the document as `.pdf` or `.docx`.
+  The Word file keeps headings, formatting, links, lists, tables, images, logo,
+  page note and margins, so it can be uploaded to Google Drive and edited in
+  Google Docs. PDF base-14 faces map to Arial, Times New Roman and Courier New.
+- Files are named after the document title (its first `#` heading, else its
+  first heading of any level), and `⌘/Ctrl + S` downloads the PDF.
 
 ## Fonts
 
@@ -83,7 +87,7 @@ src/
   app/                 page shell, metadata, icons, robots + sitemap
   components/
     editor.tsx         client-only app: state, draft, panes
-    pdf-preview.tsx    double-buffered iframe preview + download
+    pdf-preview.tsx    double-buffered iframe preview + download menu
     settings-sidebar.tsx
     pdf/               the PDF document and its styles
   lib/
@@ -91,13 +95,15 @@ src/
     balance.ts         font-metric line balancing for headings
     fonts.ts           bundled + local font registration
     images.ts          image conversion to PDF-ready PNG
+    docx.ts            Word (.docx) export
     storage.ts         localStorage draft
 ```
 
 ## Stack
 
 Next.js 16, React 19, Tailwind CSS 4 and
-[@react-pdf/renderer](https://react-pdf.org/).
+[@react-pdf/renderer](https://react-pdf.org/), with
+[docx](https://docx.js.org/) for the Word export.
 
 ## License
 

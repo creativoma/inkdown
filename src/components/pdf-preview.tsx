@@ -3,13 +3,14 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { BlobProvider } from '@react-pdf/renderer'
 import type { DocumentProps } from '@react-pdf/renderer'
-import { DownloadIcon } from '@radix-ui/react-icons'
+import { ChevronDownIcon, DownloadIcon } from '@radix-ui/react-icons'
 import { cn } from '@/lib/utils'
 
 interface PdfPreviewProps {
     document: React.ReactElement<DocumentProps> | null
     fileName: string
     stale: boolean
+    onExportWord?: () => Promise<void>
     className?: string
 }
 
@@ -18,6 +19,7 @@ interface PdfFramesProps {
     busy: boolean
     error?: Error | null
     fileName: string
+    onExportWord?: () => Promise<void>
     className?: string
 }
 
@@ -33,6 +35,7 @@ const PdfFrames: React.FC<PdfFramesProps> = ({
     busy,
     error,
     fileName,
+    onExportWord,
     className,
 }) => {
     const frames = useRef<(HTMLIFrameElement | null)[]>([null, null])
@@ -42,6 +45,9 @@ const PdfFrames: React.FC<PdfFramesProps> = ({
 
     const [visible, setVisible] = useState(0)
     const [downloadUrl, setDownloadUrl] = useState<string | null>(null)
+    const [exporting, setExporting] = useState(false)
+    const [menuOpen, setMenuOpen] = useState(false)
+    const menuRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
         if (!blob || blob === renderedBlob.current) return
@@ -85,27 +91,109 @@ const PdfFrames: React.FC<PdfFramesProps> = ({
         return () => window.removeEventListener('keydown', onKeyDown)
     }, [])
 
+    useEffect(() => {
+        if (!menuOpen) return
+
+        const close = () => setMenuOpen(false)
+        const onPointerDown = (event: PointerEvent) => {
+            if (!menuRef.current?.contains(event.target as Node)) close()
+        }
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') close()
+        }
+
+        document.addEventListener('pointerdown', onPointerDown)
+        document.addEventListener('keydown', onKeyDown)
+        // Clicks inside the PDF iframe never reach the document; they blur it.
+        window.addEventListener('blur', close)
+        return () => {
+            document.removeEventListener('pointerdown', onPointerDown)
+            document.removeEventListener('keydown', onKeyDown)
+            window.removeEventListener('blur', close)
+        }
+    }, [menuOpen])
+
     const ready = downloadUrl !== null
+
+    const handleExportWord = async () => {
+        setMenuOpen(false)
+        if (!onExportWord || exporting) return
+        setExporting(true)
+        try {
+            await onExportWord()
+        } finally {
+            setExporting(false)
+        }
+    }
 
     return (
         <div className={cn('relative bg-muted/40', className)}>
             <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
-                <span className="hidden max-w-[14rem] truncate rounded-md bg-background/80 px-2 py-1 text-xs text-muted-foreground backdrop-blur sm:block">
-                    {busy ? 'Updating…' : fileName}
-                </span>
+                {busy && (
+                    <span className="hidden rounded-md bg-background/80 px-2 py-1 text-xs text-muted-foreground backdrop-blur sm:block">
+                        Updating…
+                    </span>
+                )}
+                <div ref={menuRef} className="relative">
+                    <button
+                        type="button"
+                        onClick={() => setMenuOpen((open) => !open)}
+                        disabled={!ready || exporting}
+                        aria-haspopup="menu"
+                        aria-expanded={menuOpen}
+                        title="Download (⌘S for PDF)"
+                        className="flex items-center gap-1.5 rounded-md border border-border bg-background/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-60"
+                    >
+                        <DownloadIcon />
+                        {exporting
+                            ? 'Exporting…'
+                            : ready
+                              ? 'Download'
+                              : 'Preparing…'}
+                        <ChevronDownIcon className="text-muted-foreground" />
+                    </button>
+
+                    {menuOpen && (
+                        <div
+                            role="menu"
+                            className="absolute right-0 mt-1 flex min-w-full flex-col rounded-md border border-border bg-background p-1 shadow-md"
+                        >
+                            <a
+                                role="menuitem"
+                                href={downloadUrl ?? undefined}
+                                download={fileName}
+                                onClick={() => setMenuOpen(false)}
+                                className="flex items-center justify-between gap-4 rounded px-2 py-1.5 text-xs text-foreground transition-colors hover:bg-muted"
+                            >
+                                .pdf
+                                <span className="text-muted-foreground">
+                                    ⌘S
+                                </span>
+                            </a>
+                            {onExportWord && (
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={handleExportWord}
+                                    title="Editable in Word and Google Docs"
+                                    className="rounded px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted"
+                                >
+                                    .docx
+                                </button>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Target of the ⌘S shortcut, which always saves the PDF. */}
                 <a
                     ref={downloadRef}
                     href={downloadUrl ?? undefined}
                     download={fileName}
-                    title="Download PDF (⌘S)"
-                    className={cn(
-                        'flex items-center gap-1.5 rounded-md border border-border bg-background/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted',
-                        !ready && 'pointer-events-none opacity-60'
-                    )}
-                >
-                    <DownloadIcon />
-                    {ready ? 'Download' : 'Preparing…'}
-                </a>
+                    hidden
+                    aria-hidden
+                    tabIndex={-1}
+                />
             </div>
 
             {FRAME_SLOTS.map((slot) => (
@@ -143,6 +231,7 @@ export const PdfPreview: React.FC<PdfPreviewProps> = ({
     document,
     fileName,
     stale,
+    onExportWord,
     className,
 }) =>
     document ? (
@@ -153,10 +242,17 @@ export const PdfPreview: React.FC<PdfPreviewProps> = ({
                     busy={loading || stale}
                     error={error}
                     fileName={fileName}
+                    onExportWord={onExportWord}
                     className={className}
                 />
             )}
         </BlobProvider>
     ) : (
-        <PdfFrames blob={null} busy fileName={fileName} className={className} />
+        <PdfFrames
+            blob={null}
+            busy
+            fileName={fileName}
+            onExportWord={onExportWord}
+            className={className}
+        />
     )
