@@ -1,0 +1,8 @@
+allowBuilds:
+    unrs-resolver: true
+overrides:
+    minimatch@>=10 <11.0.1: ^11.0.3
+auditConfig:
+    ignoreGhsas:
+        # minimatch 3.x (eslint-plugin-import/jsx-a11y/react) has no patched release; dev-only
+        - GHSA-g3hv-75wg-m249
