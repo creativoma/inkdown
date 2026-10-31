@@ -204,6 +204,20 @@ export const Editor = () => {
         [renderedMarkdown]
     )
 
+    const handleExportWord = async () => {
+        // Built from the live text, not the debounced preview, so the file
+        // never misses the last keystrokes.
+        const { createDocx } = await import('@/lib/docx')
+        const blob = await createDocx({ markdown, settings, images })
+
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = fileNameFromMarkdown(markdown, 'docx')
+        link.click()
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+    }
+
     const wordCount = useMemo(
         () => markdown.trim().split(/\s+/).filter(Boolean).length,
         [markdown]
@@ -361,6 +375,7 @@ export const Editor = () => {
                     document={pdfDocument}
                     fileName={fileName}
                     stale={isRendering}
+                    onExportWord={handleExportWord}
                     className={cn(
                         'w-full min-w-0 flex-1 md:block',
                         pane === 'preview' ? 'block' : 'hidden'
